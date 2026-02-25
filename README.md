@@ -11,6 +11,7 @@ API Documentation: AFAX Platform API v1.3b.pdf
 2. Import into Postman
 3. Configure environment variables:
    - base_url
+   - token
    - haccno
    - callback_url
 4. Generate your API token (you should have an active account that support Application Integration)
