@@ -509,7 +509,7 @@
           },
           {
             "key": "x-afax-internal-key",
-            "value": "_$3CR#T_VALUE_H3R#",
+            "value": "ASK-OUR-SUPPORT",
             "type": "text",
             "disabled": true
           }
@@ -609,7 +609,7 @@
     },
     {
       "key": "account_no",
-      "value": "201500"
+      "value": "1801500"
     },
     {
       "key": "callback_url",
