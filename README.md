@@ -21,7 +21,7 @@ AFAX Platform API v1.3b.pdf
 Official Postman collection for integrating with the AFAX Platform API.
 
 ## Resources
-Official Website: https://www.afax.com
+Official Website: https://www.afax.ca
 API Documentation: AFAX Platform API v1.3b.pdf
 
 ## Getting Started
