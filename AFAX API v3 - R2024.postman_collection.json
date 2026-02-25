@@ -1,0 +1,635 @@
+{
+  "info": {
+    "_postman_id": "ab02c555-7335-4f89-8ecd-0fe29e12bd6b",
+    "name": "AFAX API v3 - R2024",
+    "description": "AFAX Platform API v3 collection (CreateFaxDoc, DeleteFax, GetFax*, Media, ValidateClient). Includes haccno pre-request script and sample Base64 document loading.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "12083475"
+  },
+  "item": [
+    {
+      "name": "v3 - CreateFaxDoc (Send Fax, Base64 content)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// =======================",
+              "// 1) Generate haccno",
+              "// =======================",
+              "",
+              "const CryptoJS = require('crypto-js');",
+              "",
+              "// 1) Read the plain account number from variables",
+              "//    This will look up in this order: local → data → environment → collection → globals",
+              "const accountNo = pm.variables.get('account_no');",
+              "",
+              "if (!accountNo) {",
+              "    throw new Error('AFAX: variable \"account_no\" is not set. Set it in env/collection or as a local variable.');",
+              "}",
+              "",
+              "// 2) Build UTC date string YYMMDDhhnn (24-hour clock)",
+              "const now = new Date();",
+              "",
+              "const yy = String(now.getUTCFullYear()).slice(-2);        // e.g. 2025 → \"25\"",
+              "const MM = String(now.getUTCMonth() + 1).padStart(2, '0'); // 0-11 → 01-12",
+              "const dd = String(now.getUTCDate()).padStart(2, '0');      // 01-31",
+              "const hh = String(now.getUTCHours()).padStart(2, '0');     // 00-23",
+              "const nn = String(now.getUTCMinutes()).padStart(2, '0');   // 00-59",
+              "",
+              "const dateStr = `${yy}${MM}${dd}${hh}${nn}`;               // \"YYMMDDhhnn\"",
+              "",
+              "// 3) Build input string: account-no + UTC YYMMDDhhnn",
+              "const strValue = accountNo + dateStr;                      // e.g. \"2015002511252318\"",
+              "",
+              "// 4) Compute MD5 and uppercase",
+              "const haccno = CryptoJS.MD5(strValue).toString().toUpperCase();",
+              "",
+              "// 5) Make it available to the request body",
+              "pm.variables.set('haccno', haccno);",
+              "",
+              "// (Optional) debug info",
+              "pm.variables.set('haccno_raw_string', strValue);",
+              "pm.variables.set('haccno_utc_stamp', dateStr);",
+              "",
+              "console.log('AFAX account_no:', accountNo);",
+              "console.log('AFAX raw string (account_no + YYMMDDhhnn):', strValue);",
+              "console.log('AFAX haccno:', haccno);",
+              "",
+              "// =======================",
+              "// 2) Download PDF & encode as Base64",
+              "// =======================",
+              "",
+              "// You can override this via a variable \"faxDocUrl\" if you want different docs later",
+              "const faxDocUrl = pm.variables.get('faxDocUrl') || 'https://qfax.ca/misc/afax.test.page.pd';",
+              "",
+              "pm.sendRequest(",
+              "    {",
+              "        url: faxDocUrl,",
+              "        method: 'GET'",
+              "        // Optionally, you can add headers:",
+              "        // header: { \"Accept\": \"application/pdf\" }",
+              "    },",
+              "    function (err, res) {",
+              "        if (err) {",
+              "            console.error('AFAX: error fetching fax document:', err);",
+              "            throw new Error('AFAX: failed to fetch fax document for faxDocumentsContent');",
+              "        }",
+              "",
+              "        try {",
+              "            // res.stream is a Buffer-like object in Postman sandbox",
+              "            const buffer = Buffer.from(res.stream);",
+              "            const base64Content = buffer.toString('base64');",
+              "",
+              "            pm.variables.set('faxDocumentsContent', base64Content);",
+              "",
+              "            console.log('AFAX faxDocumentsContent length (base64):', base64Content.length);",
+              "        } catch (e) {",
+              "            console.error('AFAX: error converting document to Base64:', e);",
+              "            throw new Error('AFAX: failed to convert fax document to Base64');",
+              "        }",
+              "    }",
+              ");"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sid_key\": \"{{token}}\",\n  \"haccno\": \"{{haccno}}\",\n  \"FaxDoc\": {\n    \"clientReferenceCode\": \"AFAX TEST\",         // Any reference value (maximum 64 characters)\n    \"fromFaxNumber\": \"14165551010\",             // Your fax number (10 or 11 digits, optional E.164 format)\n    \"fromEmailAddress\": \"fax.demo@gmail.com\",   // Sender email address\n    \"toMultipleRecipients\": \"NO\",               // YES or NO. Set to YES if sending to multiple fax numbers (comma-delimited, 10 or 11 digits, optional E.164 format)\n    \"toFaxNumbers\": \"19055552020\",              // Single fax number OR multiple numbers (e.g., \"9055551010,9055552020,...\")\n    \"typeOfCoverpage\": null,                    // Optional cover page type (if applicable)\n    \"coverPageURL\": \"\",                         // URL of a custom cover page (if used)\n    \"fromFaxNumber_OnCoverPage\": \"\",            // Fax number displayed on the cover page\n    \"fromName_OnCoverPage\": \"\",                 // Sender name displayed on the cover page\n    \"toName_OnCoverPage\": \"\",                   // Recipient name displayed on the cover page\n    \"toOrgName_OnCoverPage\": \"\",                // Recipient organization name displayed on the cover page\n    \"faxSubject\": \"\",                           // Subject line shown on the cover page\n    \"faxMessage\": \"\",                           // Message content shown on the cover page\n    \"qualityOfFax\": \"fine\",                     // Fax transmission quality (e.g., fine, standard)\n    \"clientCallBackURL\": \"{{callback_url}}\",    // Optional webhook URL to receive fax status event notifications\n    \"sendFaxAtDateTime\": null,                  // Schedule fax for future delivery (UTC format)\n    \"faxDocumentsURLs\": [],                     // Array of document URLs to be faxed (e.g., https://qfax.ca/misc/afax.test.page.pdf)\n    \"faxDocumentsContent\": \"{{faxDocumentsContent}}\" // Base64-encoded document content (alternative to faxDocumentsURLs)\n  },\n  \"encryption\": \"{{encryption}}\",\n  \"aplatform\": \"{{aplatform}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v3/CreateFaxDoc",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v3",
+            "CreateFaxDoc"
+          ]
+        },
+        "description": "Use this method to **send** fax documents (AFAX v3 CreateFaxDoc). Fax content is embedded as Base64 in faxDocumentsContent."
+      },
+      "response": []
+    },
+    {
+      "name": "v3 - CreateFaxDoc (Send Fax, URL content)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// =======================",
+              "// 1) Generate haccno",
+              "// =======================",
+              "",
+              "const CryptoJS = require('crypto-js');",
+              "",
+              "// 1) Read the plain account number from variables",
+              "//    This will look up in this order: local → data → environment → collection → globals",
+              "const accountNo = pm.variables.get('account_no');",
+              "",
+              "if (!accountNo) {",
+              "    throw new Error('AFAX: variable \"account_no\" is not set. Set it in env/collection or as a local variable.');",
+              "}",
+              "",
+              "// 2) Build UTC date string YYMMDDhhnn (24-hour clock)",
+              "const now = new Date();",
+              "",
+              "const yy = String(now.getUTCFullYear()).slice(-2);        // e.g. 2025 → \"25\"",
+              "const MM = String(now.getUTCMonth() + 1).padStart(2, '0'); // 0-11 → 01-12",
+              "const dd = String(now.getUTCDate()).padStart(2, '0');      // 01-31",
+              "const hh = String(now.getUTCHours()).padStart(2, '0');     // 00-23",
+              "const nn = String(now.getUTCMinutes()).padStart(2, '0');   // 00-59",
+              "",
+              "const dateStr = `${yy}${MM}${dd}${hh}${nn}`;               // \"YYMMDDhhnn\"",
+              "",
+              "// 3) Build input string: account-no + UTC YYMMDDhhnn",
+              "const strValue = accountNo + dateStr;                      // e.g. \"2015002511252318\"",
+              "",
+              "// 4) Compute MD5 and uppercase",
+              "const haccno = CryptoJS.MD5(strValue).toString().toUpperCase();",
+              "",
+              "// 5) Make it available to the request body",
+              "pm.variables.set('haccno', haccno);",
+              "",
+              "// (Optional) debug info",
+              "pm.variables.set('haccno_raw_string', strValue);",
+              "pm.variables.set('haccno_utc_stamp', dateStr);",
+              "",
+              "console.log('AFAX account_no:', accountNo);",
+              "console.log('AFAX raw string (account_no + YYMMDDhhnn):', strValue);",
+              "console.log('AFAX haccno:', haccno);",
+              "",
+              "// =======================",
+              "// 2) Download PDF & encode as Base64",
+              "// =======================",
+              "",
+              "// You can override this via a variable \"faxDocUrl\" if you want different docs later",
+              "const faxDocUrl = pm.variables.get('faxDocUrl') || 'https://qfax.ca/misc/afax.test.page.pdf';",
+              "",
+              "pm.sendRequest(",
+              "    {",
+              "        url: faxDocUrl,",
+              "        method: 'GET'",
+              "        // Optionally, you can add headers:",
+              "        // header: { \"Accept\": \"application/pdf\" }",
+              "    },",
+              "    function (err, res) {",
+              "        if (err) {",
+              "            console.error('AFAX: error fetching fax document:', err);",
+              "            throw new Error('AFAX: failed to fetch fax document for faxDocumentsContent');",
+              "        }",
+              "",
+              "        try {",
+              "            // res.stream is a Buffer-like object in Postman sandbox",
+              "            const buffer = Buffer.from(res.stream);",
+              "            const base64Content = buffer.toString('base64');",
+              "",
+              "            pm.variables.set('faxDocumentsContent', base64Content);",
+              "",
+              "            console.log('AFAX faxDocumentsContent length (base64):', base64Content.length);",
+              "        } catch (e) {",
+              "            console.error('AFAX: error converting document to Base64:', e);",
+              "            throw new Error('AFAX: failed to convert fax document to Base64');",
+              "        }",
+              "    }",
+              ");"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sid_key\": \"{{token}}\",\n  \"haccno\": \"{{haccno}}\",\n  \"FaxDoc\": {\n    \"clientReferenceCode\": \"AFAX TEST\",         // Any reference value (maximum 64 characters)\n    \"fromFaxNumber\": \"14165551010\",             // Your fax number (10 or 11 digits, optional E.164 format)\n    \"fromEmailAddress\": \"fax.demo@gmail.com\",   // Sender email address\n    \"toMultipleRecipients\": \"NO\",\n    \"toFaxNumbers\": \"19055552020\",              // Valid recipient fax number\n    \"typeOfCoverpage\": 1,\n    \"coverPageURL\": \"\",\n    \"fromFaxNumber_OnCoverPage\": \"\",\n    \"fromName_OnCoverPage\": \"\",\n    \"toName_OnCoverPage\": \"\",\n    \"toOrgName_OnCoverPage\": \"\",\n    \"faxSubject\": \"AFAX Platform - Subject!\",\n    \"faxMessage\": \"This is a test fax from Postman (Base64).\",\n    \"qualityOfFax\": \"fine\",\n    \"clientCallBackURL\": \"{{callback_url}}\",\n    \"sendFaxAtDateTime\": null,\n    \"faxDocumentsURLs\": [\"{{doc_url}}\"],        // Array of document URLs to be faxed (e.g., https://qfax.ca/misc/afax.test.page2.pdf)\n    \"faxDocumentsContent\": \"\"\n  },\n  \"encryption\": \"{{encryption}}\",\n  \"aplatform\": \"{{aplatform}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v3/CreateFaxDoc",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v3",
+            "CreateFaxDoc"
+          ]
+        },
+        "description": "Use this method to **send** fax documents (AFAX v3 CreateFaxDoc). Fax content is embedded as Base64 in faxDocumentsContent."
+      },
+      "response": []
+    },
+    {
+      "name": "v3 - DeleteFax (Delete fax by refid)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sid_key\": \"{{token}}\",\n  \"haccno\": \"{{haccno}}\",\n  \"refid\": \"AFX2212a63af5b99c6ab24042cc1b95ac1f\",\n  \"aplatform\": \"{{aplatform}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v3/DeleteFax",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v3",
+            "DeleteFax"
+          ]
+        },
+        "description": "Delete fax document using unique AFAX Reference ID (refid)."
+      },
+      "response": []
+    },
+    {
+      "name": "v3 - DeleteQueuedFax (Delete queued fax by refid)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sid_key\": \"{{token}}\",\n  \"haccno\": \"{{haccno}}\",\n  \"refid\": \"AFX2212a63af5b99c6ab24042cc1b95ac1f\",\n  \"aplatform\": \"{{aplatform}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v3/DeleteQueuedFax",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v3",
+            "DeleteQueuedFax"
+          ]
+        },
+        "description": "Delete queued fax document using unique AFAX Reference ID (refid)."
+      },
+      "response": []
+    },
+    {
+      "name": "v3 - GetFaxByDifValues (Search faxes)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v3/GetFaxByDifValues?sid_key={{token}}&haccno={{haccno}}&status=sent&from_email=demo.user@afax.ca&from_faxnumber=+14165551010&to_faxnumber=+19055552020&rowno=10&inpast_x_minutes=60&aplatform={{aplatform}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v3",
+            "GetFaxByDifValues"
+          ],
+          "query": [
+            {
+              "key": "sid_key",
+              "value": "{{token}}",
+              "description": "Security Identifier Key"
+            },
+            {
+              "key": "haccno",
+              "value": "{{haccno}}",
+              "description": "Client Account Number"
+            },
+            {
+              "key": "status",
+              "value": "sent",
+              "description": "sent | received | failed | *"
+            },
+            {
+              "key": "from_email",
+              "value": "demo.user@afax.ca",
+              "description": "Filter by sender email"
+            },
+            {
+              "key": "from_faxnumber",
+              "value": "+14165551010",
+              "description": "Filter by sender fax number"
+            },
+            {
+              "key": "to_faxnumber",
+              "value": "+19055552020",
+              "description": "Filter by destination fax number"
+            },
+            {
+              "key": "rowno",
+              "value": "10",
+              "description": "Max number of records (max 500)"
+            },
+            {
+              "key": "inpast_x_minutes",
+              "value": "60",
+              "description": "Look back window in minutes (up to 525600)"
+            },
+            {
+              "key": "aplatform",
+              "value": "{{aplatform}}",
+              "description": "AFAX platform code"
+            }
+          ]
+        },
+        "description": "Get detailed fax information using different filters (status, from/to, time window)."
+      },
+      "response": []
+    },
+    {
+      "name": "v3 - GetFaxbyRFid (Get fax details by refid)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v3/GetFaxbyRFid?sid_key={{token}}&haccno={{haccno}}&rfid=AFX2212a63af5b99c6ab24042cc1b95ac1f&encryption={{encryption}}&embdoc=Embedded",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v3",
+            "GetFaxbyRFid"
+          ],
+          "query": [
+            {
+              "key": "sid_key",
+              "value": "{{token}}"
+            },
+            {
+              "key": "haccno",
+              "value": "{{haccno}}"
+            },
+            {
+              "key": "rfid",
+              "value": "AFX2212a63af5b99c6ab24042cc1b95ac1f",
+              "description": "Unique AFAX reference ID"
+            },
+            {
+              "key": "encryption",
+              "value": "{{encryption}}",
+              "description": "YES/NO (default: YES)"
+            },
+            {
+              "key": "embdoc",
+              "value": "Embedded",
+              "description": "Embedded or other modes"
+            }
+          ]
+        },
+        "description": "Get fax document & metadata by AFAX reference ID. embdoc=Embedded returns Base64 content."
+      },
+      "response": []
+    },
+    {
+      "name": "v3 - GetQueuedFaxes (List queued faxes)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v3/GetQueuedFaxes?sid_key={{token}}&haccno={{haccno}}&from_email=demo.user@afax.ca&aplatform={{aplatform}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v3",
+            "GetQueuedFaxes"
+          ],
+          "query": [
+            {
+              "key": "sid_key",
+              "value": "{{token}}"
+            },
+            {
+              "key": "haccno",
+              "value": "{{haccno}}"
+            },
+            {
+              "key": "from_email",
+              "value": "demo.user@afax.ca",
+              "description": "Filter by sender email or use *"
+            },
+            {
+              "key": "aplatform",
+              "value": "{{aplatform}}"
+            }
+          ]
+        },
+        "description": "Get list of recently submitted faxes that are still in queue."
+      },
+      "response": []
+    },
+    {
+      "name": "v3 - Media (Get/download fax media by refid)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v3/Media/{{refid}}?sid_key={{token}}&haccno={{haccno}}&downloadable=Yes&filename=afax-fax-doc",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v3",
+            "Media",
+            "{{refid}}"
+          ],
+          "query": [
+            {
+              "key": "sid_key",
+              "value": "{{token}}"
+            },
+            {
+              "key": "haccno",
+              "value": "{{haccno}}"
+            },
+            {
+              "key": "downloadable",
+              "value": "Yes",
+              "description": "Yes to trigger file download behavior"
+            },
+            {
+              "key": "filename",
+              "value": "afax-fax-doc",
+              "description": "Filename (without extension)"
+            }
+          ]
+        },
+        "description": "Retrieve/download the content of a fax document sent or received, associated with your profile."
+      },
+      "response": []
+    },
+    {
+      "name": "v3 - ValidateClient (Validate sid_key + haccno)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-afax-auth",
+            "value": "assigned-value",
+            "type": "text",
+            "disabled": true
+          },
+          {
+            "key": "content-type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-afax-internal-key",
+            "value": "_$3CR#T_VALUE_H3R#",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v3/ValidateClient?sid_key={{token}}&haccno={{haccno}}&apiver=v3",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v3",
+            "ValidateClient"
+          ],
+          "query": [
+            {
+              "key": "sid_key",
+              "value": "{{token}}"
+            },
+            {
+              "key": "haccno",
+              "value": "{{haccno}}"
+            },
+            {
+              "key": "apiver",
+              "value": "v3"
+            }
+          ]
+        },
+        "description": "Validate client credentials (sid_key + haccno) against AFAX v3."
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "requests": {},
+        "exec": [
+          "const CryptoJS = require('crypto-js');",
+          "",
+          "// =======================",
+          "// Collection-level: Generate haccno from account_no",
+          "// =======================",
+          "",
+          "const accountNo = pm.variables.get('account_no') || '201500';",
+          "",
+          "if (!accountNo) {",
+          "    throw new Error('AFAX: account_no is not set.');",
+          "}",
+          "",
+          "const now = new Date();",
+          "",
+          "const yy = String(now.getUTCFullYear()).slice(-2);",
+          "const MM = String(now.getUTCMonth() + 1).padStart(2, '0');",
+          "const dd = String(now.getUTCDate()).padStart(2, '0');",
+          "const hh = String(now.getUTCHours()).padStart(2, '0');",
+          "const nn = String(now.getUTCMinutes()).padStart(2, '0');",
+          "",
+          "const dateStr = `${yy}${MM}${dd}${hh}${nn}`;",
+          "",
+          "const strValue = accountNo + dateStr;",
+          "const haccno = CryptoJS.MD5(strValue).toString().toUpperCase();",
+          "",
+          "pm.variables.set('haccno', haccno);",
+          "pm.variables.set('haccno_raw_string', strValue);",
+          "pm.variables.set('haccno_utc_stamp', dateStr);",
+          "",
+          "console.log('AFAX account_no:', accountNo);",
+          "console.log('AFAX raw string (account_no + YYMMDDhhnn):', strValue);",
+          "console.log('AFAX haccno:', haccno);"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://api.afax.ca/afx"
+    },
+    {
+      "key": "token",
+      "value": "YOUR_TEST_TOKEN_HERE"
+    },
+    {
+      "key": "account_no",
+      "value": "201500"
+    },
+    {
+      "key": "callback_url",
+      "value": "https://webhook.site/your-test-callback"
+    },
+    {
+      "key": "faxDocUrl",
+      "value": "https://qfax.ca/misc/afax.test.page2.pdf"
+    },
+    {
+      "key": "aplatform",
+      "value": "afax"
+    },
+    {
+      "key": "encryption",
+      "value": "YES"
+    },
+    {
+      "key": "refid",
+      "value": "AFX2552a63ad5b44c6ab24042cc1b73a39f"
+    }
+  ]
+}
